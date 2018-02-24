@@ -1,0 +1,90 @@
+#!/bin/bash
+
+set -eou pipefail
+
+function check_password() {
+	password="${1}"
+	found=0
+	responses=0
+	sha1=$(echo -n "${password}" | sha1sum | tr '[:lower:]' '[:upper:]' | awk -F' ' '{ print $1 }')
+	short=${sha1:0:5}
+
+	echo "${short}: ${sha1}"
+	resp=$(curl -s -X GET https://api.pwnedpasswords.com/range/${short})
+
+	# Compare local hash against the ones we got from pwnedpasswords.com.
+	for h in $resp; do
+	        responses=$((responses + 1))
+		cleaned_hash=$(echo "${short}${h}" | awk -F: '{ print $1 }')
+
+		if [[ "${cleaned_hash}" == ${sha1} ]]; then
+			found=1
+			(>&2 echo -e "\e[31m!!\e[33m Your password ${password} with SHA1 ${sha1} has been compromised!\e[0m")
+		fi
+	done
+
+	echo "Responses: $responses"
+
+	return ${found}
+}
+
+
+function check_passwordlist()
+{
+  filename="$1"
+
+  if [ "$filename" -ne "--" -a ! -r "$filename" ]
+  then
+    echo "No such file: \"$filename\""
+    exit 1
+  fi
+
+  echo "Not implemented yet ;)"
+  exit 2
+}
+
+
+function check_typed_password()
+{
+  password=""
+  while [ -z "$password" ]
+  do
+    password1=""
+    while [ -z "$password1" ]
+    do
+      read -p "Enter password: " -s -r password1
+      echo
+    done
+    password2=""
+    while [ -z "$password2" ]
+    do
+      read -p "Re-type the password: " -s -r password2
+      echo
+    done
+
+    if [ "$password1" == "$password2" ]
+    then
+      password="$password1"
+    else
+      echo "Entered passwords are not the same, please try again!"
+    fi
+  done
+
+  check_password "$password" && echo "Password is not found on haveibeenpwnd :)"
+}
+
+if [ "$#" -gt 0 ]
+then
+  while [ "$#" -gt 0 ]
+  do
+    check_file $1
+    shift
+  done
+else
+  echo "To supply a list of passwords, provide the filename as an argument or -- and"
+  echo "feed a passwordlist to stdin. Proceeding to check a single password."
+  check_typed_password
+fi
+
+exit 0
+
